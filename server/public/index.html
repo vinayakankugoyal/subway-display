@@ -1,0 +1,244 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Subway display</title>
+<style>
+  :root { color-scheme: light dark; --bg:#f6f6f4; --fg:#15150f; --mut:#6b6b60;
+          --line:#d9d9d0; --card:#fff; --accent:#1f6feb; --bad:#b3261e; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#16161a; --fg:#ececea; --mut:#9a9a93; --line:#303036;
+            --card:#1e1e23; --accent:#6ea8ff; --bad:#ff6b5e; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.45 -apple-system,
+         BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif; padding:0 16px 64px; }
+  main { max-width: 560px; margin: 0 auto; }
+  h1 { font-size:19px; margin:24px 0 4px; }
+  p.sub { color:var(--mut); margin:0 0 20px; font-size:13px; }
+  h2 { font-size:12px; text-transform:uppercase; letter-spacing:.07em;
+       color:var(--mut); margin:26px 0 10px; }
+
+  /* panel preview, deliberately monochrome like the e-paper */
+  .panel { background:#fff; color:#000; border:1px solid var(--line); border-radius:8px;
+           padding:10px 14px; font-family:"Helvetica Neue",Arial,sans-serif; }
+  .panel .stamp { text-align:center; font-weight:700; font-size:12px;
+                  border-bottom:2px solid #000; padding-bottom:6px; margin-bottom:4px; }
+  .prow { display:flex; align-items:center; gap:10px; padding:10px 0;
+          border-bottom:1px solid #e3e3e3; }
+  .prow:last-child { border-bottom:0; }
+  .bullet { flex:0 0 auto; width:34px; height:34px; border-radius:50%; background:#000;
+            color:#fff; display:grid; place-items:center; font-weight:700; font-size:17px; }
+  .plabel { flex:1 1 auto; font-weight:700; font-size:15px; }
+  .pmins { text-align:right; line-height:1.1; }
+  .pmins b { font-size:24px; } .pmins span { font-size:11px; color:#444; display:block; }
+
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px;
+          padding:12px; margin-bottom:10px; }
+  .grid { display:grid; grid-template-columns: 78px 1fr; gap:8px; align-items:center; }
+  label { font-size:12px; color:var(--mut); }
+  input, select, button { font:inherit; color:inherit; background:var(--bg);
+          border:1px solid var(--line); border-radius:7px; padding:8px 9px; width:100%; }
+  input:focus, select:focus { outline:2px solid var(--accent); outline-offset:-1px; }
+  .seg { display:flex; gap:6px; }
+  .seg button { flex:1; }
+  .seg button[aria-pressed="true"] { background:var(--accent); color:#fff;
+          border-color:var(--accent); }
+  .rowhead { display:flex; justify-content:space-between; align-items:center;
+             margin-bottom:10px; }
+  .rowhead strong { font-size:13px; }
+  .link { background:none; border:0; color:var(--accent); width:auto; padding:4px;
+          cursor:pointer; font-size:13px; }
+  .station { font-size:12px; color:var(--mut); margin-top:4px; min-height:1.2em; }
+  .hits { margin-top:6px; display:flex; flex-wrap:wrap; gap:6px; }
+  .hits button { width:auto; padding:5px 9px; font-size:12.5px; cursor:pointer; }
+  .count { font-size:11px; color:var(--mut); text-align:right; }
+  .actions { display:flex; gap:10px; align-items:center; margin-top:16px; }
+  .actions button { width:auto; padding:10px 18px; cursor:pointer; }
+  .primary { background:var(--accent); color:#fff; border-color:var(--accent);
+             font-weight:600; }
+  .msg { font-size:13px; min-height:1.3em; }
+  .msg.bad { color:var(--bad); } .msg.ok { color:var(--mut); }
+</style>
+
+<main>
+  <h1>Subway display</h1>
+  <p class="sub">Changes reach the panel on its next poll, within 30 seconds.</p>
+
+  <h2>What the panel shows now</h2>
+  <div class="panel" id="preview"><div class="stamp">loading…</div></div>
+
+  <h2>Rows</h2>
+  <div id="rows"></div>
+  <button class="link" id="add">+ add row</button>
+
+  <div class="actions">
+    <button class="primary" id="save">Save</button>
+    <button id="revert">Revert</button>
+    <span class="msg" id="msg"></span>
+  </div>
+</main>
+
+<script>
+const LINES = ['1','2','3','4','5','6','7','GS','A','C','E','H','FS','B','D','F','M',
+               'G','J','Z','L','N','Q','R','W','SI'];
+const MAX_ROWS = 4, MAX_LABEL = 23;
+const $ = (s) => document.querySelector(s);
+let rows = [];
+
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) =>
+  ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+
+function rowCard(r, i) {
+  const base = (r.stopId || '').slice(0, 3);
+  const dir = (r.stopId || '').slice(3) || 'N';
+  return `
+  <div class="card" data-i="${i}">
+    <div class="rowhead">
+      <strong>Row ${i + 1}</strong>
+      <button class="link" data-act="remove">remove</button>
+    </div>
+    <div class="grid">
+      <label for="line${i}">Line</label>
+      <select id="line${i}" data-f="line">
+        ${LINES.map((l) => `<option ${l === r.line ? 'selected' : ''}>${l}</option>`).join('')}
+      </select>
+
+      <label for="stop${i}">Station</label>
+      <div>
+        <input id="stop${i}" data-f="search" placeholder="search, e.g. 7 av"
+               value="${esc(r._q ?? '')}" autocomplete="off">
+        <div class="station" data-role="station">
+          ${base ? `${esc(base)} — ${esc(r.station || '')}` : 'no station chosen'}
+        </div>
+        <div class="hits" data-role="hits"></div>
+      </div>
+
+      <label>Direction</label>
+      <div class="seg">
+        <button data-act="dir" data-dir="N" aria-pressed="${dir === 'N'}">North</button>
+        <button data-act="dir" data-dir="S" aria-pressed="${dir === 'S'}">South</button>
+      </div>
+
+      <label for="lab${i}">Label</label>
+      <div>
+        <input id="lab${i}" data-f="label" maxlength="${MAX_LABEL}"
+               value="${esc(r.label || '')}" placeholder="to Manhattan">
+        <div class="count">${(r.label || '').length}/${MAX_LABEL}</div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function render() {
+  $('#rows').innerHTML = rows.map(rowCard).join('');
+  $('#add').style.display = rows.length >= MAX_ROWS ? 'none' : '';
+}
+
+function say(text, bad) {
+  const el = $('#msg');
+  el.textContent = text;
+  el.className = 'msg ' + (bad ? 'bad' : 'ok');
+}
+
+async function searchStops(i) {
+  const card = $(`.card[data-i="${i}"]`);
+  const q = card.querySelector('[data-f="search"]').value.trim();
+  const hits = card.querySelector('[data-role="hits"]');
+  if (q.length < 2) { hits.innerHTML = ''; return; }
+  const res = await fetch(`/api/stops?q=${encodeURIComponent(q)}&line=${rows[i].line}`);
+  const { stops } = await res.json();
+  hits.innerHTML = stops.slice(0, 8).map((s) =>
+    `<button data-act="pick" data-id="${s.id}" data-name="${esc(s.name)}">
+       ${esc(s.name)} <span style="opacity:.6">${s.id} · ${s.routes.join(' ')}</span>
+     </button>`).join('') || '<span class="station">no matches on this line</span>';
+}
+
+$('#rows').addEventListener('input', (e) => {
+  const card = e.target.closest('.card'); if (!card) return;
+  const i = +card.dataset.i;
+  const f = e.target.dataset.f;
+  if (f === 'label') {
+    rows[i].label = e.target.value;
+    card.querySelector('.count').textContent = `${e.target.value.length}/${MAX_LABEL}`;
+  } else if (f === 'line') {
+    rows[i].line = e.target.value;
+    searchStops(i);
+  } else if (f === 'search') {
+    rows[i]._q = e.target.value;
+    searchStops(i);
+  }
+});
+
+$('#rows').addEventListener('click', (e) => {
+  const btn = e.target.closest('button'); if (!btn) return;
+  const card = btn.closest('.card'); const i = +card.dataset.i;
+  const act = btn.dataset.act;
+  if (act === 'remove') { rows.splice(i, 1); render(); }
+  if (act === 'dir') {
+    rows[i].stopId = (rows[i].stopId || '').slice(0, 3) + btn.dataset.dir;
+    card.querySelectorAll('[data-act="dir"]').forEach((b) =>
+      b.setAttribute('aria-pressed', String(b === btn)));
+  }
+  if (act === 'pick') {
+    const dir = (rows[i].stopId || 'xxxN').slice(3) || 'N';
+    rows[i].stopId = btn.dataset.id + dir;
+    rows[i].station = btn.dataset.name;
+    rows[i]._q = btn.dataset.name;
+    render();
+  }
+});
+
+$('#add').onclick = () => {
+  if (rows.length >= MAX_ROWS) return;
+  rows.push({ line: 'Q', stopId: '', label: '' });
+  render();
+};
+
+$('#save').onclick = async () => {
+  say('saving…');
+  const body = {
+    rows: rows.map(({ line, stopId, label }) => ({ line, stopId, label })),
+  };
+  const res = await fetch('/api/config', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (!res.ok) { say(data.error || 'save failed', true); return; }
+  rows = data.rows.map((r) => ({ ...r, _q: r.station }));
+  render();
+  say('saved — the panel updates within 30s');
+  loadPreview();
+};
+
+$('#revert').onclick = () => loadConfig().then(() => say('reverted'));
+
+async function loadConfig() {
+  const { rows: got } = await (await fetch('/api/config')).json();
+  rows = got.map((r) => ({ ...r, _q: r.station }));
+  render();
+}
+
+async function loadPreview() {
+  try {
+    const d = await (await fetch('/api/arrivals')).json();
+    $('#preview').innerHTML =
+      `<div class="stamp">Updated ${esc(d.updated_text)}</div>` +
+      d.rows.map((r) => `
+        <div class="prow">
+          <div class="bullet">${esc(r.line)}</div>
+          <div class="plabel">${esc(r.label)}</div>
+          <div class="pmins">
+            <b>${r.mins.length ? r.mins[0] : '--'}</b>
+            <span>${r.mins.length > 1 ? 'then ' + r.mins.slice(1).join(', ') : '&nbsp;'}</span>
+          </div>
+        </div>`).join('');
+  } catch {
+    $('#preview').innerHTML = '<div class="stamp">server unreachable</div>';
+  }
+}
+
+loadConfig().then(loadPreview);
+setInterval(loadPreview, 30000);
+</script>

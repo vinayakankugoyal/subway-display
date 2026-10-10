@@ -104,7 +104,7 @@ void Epd::SendData(unsigned char data) {
  */
 void Epd::ReadBusy(void) {
     while(DigitalRead(busy_pin) == 1) {      //1: busy, 0: idle
-        // Wait
+        DelayMs(1);                          // yield, so WiFi and the watchdog get time
     }      
 }
 
