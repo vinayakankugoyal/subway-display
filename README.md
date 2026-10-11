@@ -34,11 +34,13 @@ flash              # upload over USB
 mon                # serial monitor at 115200
 ```
 
-Set `ARRIVALS_URL` in `client/config.h` to wherever the server runs. It is
-compiled in, so give that host a DHCP reservation or you will be reflashing
-whenever its address moves.
+`client/secrets.h` holds everything machine-specific -- WiFi plus
+`ARRIVALS_URL`, wherever your server runs -- and is gitignored, so no address of
+yours ends up in the repo. `client/config.h` keeps only tuning constants that
+are the same everywhere.
 
-`client/secrets.h` is gitignored and must stay that way.
+`ARRIVALS_URL` is compiled in, so give the server host a DHCP reservation or you
+will be reflashing whenever its address moves.
 
 ## Server
 

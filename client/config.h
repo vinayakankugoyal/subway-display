@@ -1,10 +1,8 @@
-// Non-secret configuration. Credentials live in secrets.h (gitignored).
+// Tuning constants, the same on every machine. Anything environment-specific
+// (WiFi, the server address) lives in secrets.h, which is gitignored.
 #ifndef CONFIG_H
 #define CONFIG_H
 
-// Where the ESP32 polls for arrival times: the arrivals server on the LAN.
-// Give that host a DHCP reservation, or this needs a reflash when its IP moves.
-#define ARRIVALS_URL     "http://SERVER-IP:8080/api/arrivals"
 
 #define POLL_INTERVAL_MS 30000     // how often to re-fetch
 #define HTTP_TIMEOUT_MS  8000      // per-request timeout
