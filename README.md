@@ -104,3 +104,9 @@ SSD1683). Always on USB power.
   refresh diffs against, and the display composites onto leftovers. Full refresh
   re-establishes it, which is why that path alone calls `Init()`.
 - A black or inverted screen means a refresh was interrupted, not a polarity bug.
+
+## License
+
+MIT; see [LICENSE](LICENSE). The Waveshare-derived display driver files in
+`client/` are under Waveshare's own MIT notice; see
+[THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES).
